@@ -1,0 +1,32 @@
+[
+  {
+    "name": "hdfc_card_spend",
+    "example": "Spent Rs. 1,499.00 On HDFC Bank Card XX4012 At Amazon Pay on 10-09-2026",
+    "pattern": "Spent\\s+Rs\\.?\\s*(?P<amount>[\\d,]+(?:\\.\\d+)?)\\s+On\\s+HDFC\\s+Bank\\s+Card\\s+[\\dX]+\\s+At\\s+(?P<store_name>.+?)(?:\\s+On\\s+|$)"
+  },
+  {
+    "name": "icici_card_spend",
+    "example": "INR 2,350.00 spent using ICICI Bank Card XX9012 on 12-09-2026 on Zomato. Avl Limit: INR 50000.00 If not you, call 1800 2662/SMS BLOCK 8000 to 9215676766.",
+    "pattern": "INR\\s+(?P<amount>[\\d,]+(?:\\.\\d+)?)\\s+spent\\s+using\\s+ICICI\\s+Bank\\s+Card\\s+[\\dX]+\\s+on\\s+[\\d\\-/\\w]+\\s+on\\s+(?P<store_name>.+?)(?:\\.\\s*|$)"
+  },
+  {
+    "name": "hdfc_ac_autodebit",
+    "example": "PAYMENT ALERT! INR 500.00 deducted from HDFC Bank A/C No XX1234 towards Netflix Lt UMRN: 98765432",
+    "pattern": "PAYMENT\\s+ALERT!\\s+INR\\s+(?P<amount>[\\d,]+(?:\\.\\d+)?)\\s+deducted\\s+from\\s+HDFC\\s+Bank\\s+A/C\\s+No\\s+[\\dX]+\\s+towards\\s+(?P<store_name>.+?)(?:\\s+Lt\\b|\\s+UMRN:|\\.\\s*|$)"
+  },
+  {
+    "name": "hdfc_card_refund",
+    "example": "Alert! Rs. 450.00 refunded by Swiggy on 15-09-2026 adjusted against HDFC Bank Credit Card XX4012 View updated balance here: https://hdfcbk.io/HDFCBK/s/kkKanakk",
+    "pattern": "Alert!\\s+Rs\\.\\s*(?P<amount>[\\d,]+(?:\\.\\d+)?)\\s+refunded\\s+by\\s+(?P<store_name>.+?)(?:\\s+on\\s+|$)"
+  },
+  {
+    "name": "kotak_upi_transfer",
+    "example": "Sent Rs.149.00 from Kotak Bank A/c X0123 to ISS GLOBAL on 01-09-26. UPI Ref 128840412345. Not done by you? Tap https://kotak.bank.in/KBANKT/Fraud",
+    "pattern": "Sent\\s+Rs\\.\\s*(?P<amount>[\\d,]+(?:\\.\\d+)?)\\s+from\\s+Kotak\\s+Bank\\s+A/?C\\s+[\\dX]+\\s+to\\s+(?P<store_name>.+?)(?:\\s+on\\s+|$)"
+  },
+  {
+    "name": "hdfc_upi_transfer",
+    "example": "Sent Rs.500.00 From HDFC Bank A/C *1234 To Swiggy On 02/09/26 Ref 123452632717 Not You? Call 18002586161/SMS BLOCK UPI to 7308080808",
+    "pattern": "Sent\\s+Rs\\.\\s*(?P<amount>[\\d,]+(?:\\.\\d+)?)\\s+From\\s+HDFC\\s+Bank\\s+A/C\\s+[\\*\\dX]+\\s+To\\s+(?P<store_name>.+?)(?:\\s+On\\s+|$)"
+  }
+]

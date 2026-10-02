@@ -1,52 +1,26 @@
+import json
 import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import pandas as pd
 
-# --- Define Static Templates ---
-TEMPLATES = [
-    {
-        "name": "hdfc_card_spend",
-        "example": "Spent Rs. 1,499.00 On HDFC Bank Card XX4012 At Amazon Pay on 10-09-2026",
-        "pattern": re.compile(
-            r"Spent\s+Rs\.?\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+On\s+HDFC\s+Bank\s+Card\s+[\dX]+\s+At\s+(?P<store_name>.+?)\s+On\s+\d{4}-\d{2}-\d{2}.*",
-            re.IGNORECASE,
-        ),
-    },
-    {
-        "name": "icici_card_spend",
-        "example": "INR 2,350.00 spent using ICICI Bank Card XX9012 on 12-09-2026 on Zomato. Avl Limit: INR 50000.00 If not you, call 1800 2662/SMS BLOCK 8000 to 9215676766.",
-        "pattern": re.compile(
-            r"INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+spent\s+using\s+ICICI\s+Bank\s+Card\s+[\dX]+\s+on\s+[\d\-/\w]+\s+on\s+(?P<store_name>.+?)\.\s+Avl\s+Limit:",
-            re.IGNORECASE,
-        ),
-    },
-    {
-        "name": "hdfc_ac_autodebit",
-        "example": "PAYMENT ALERT! INR 500.00 deducted from HDFC Bank A/C No XX1234 towards Netflix Lt UMRN: 98765432",
-        "pattern": re.compile(
-            r"PAYMENT\s+ALERT!\s+INR\s+(?P<amount>[\d,]+(?:\.\d+)?)\s+deducted\s+from\s+HDFC\s+Bank\s+A/C\s+No\s+[\dX]+\s+towards\s+(?P<store_name>.+?)(?:\s+Lt\b|\s+UMRN:|\.\s*|$)",
-            re.IGNORECASE,
-        ),
-    },
-    {
-        "name": "hdfc_card_refund",
-        "example": "Alert! Rs. 450.00 refunded by Swiggy on 15-09-2026 adjusted against HDFC Bank Credit Card XX4012 View updated balance here: https://hdfcbk.io/HDFCBK/s/kkKanakk",
-        "pattern": re.compile(
-            r"Alert!\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+refunded\s+by\s+(?P<store_name>.+?)\s+on\s+[\d\-/\w]+\s+adjusted\s+against\s+HDFC\s+Bank\s+Credit\s+Card\s+[\dX]+",
-            re.IGNORECASE,
-        ),
-    },
-    {
-        "name": "kotak_upi_transfer",
-        "example": "Sent Rs.149.00 from Kotak Bank AC XXXX to playstore@axisbank on 11-08-25.UPI Ref XXXXX. Not you, https://kotak.com/KBANKT/Fraud",
-        "pattern": re.compile(
-            r"Sent\s+Rs\.\s*(?P<amount>[\d,]+(?:\.\d+)?)\s+from\s+Kotak\s+Bank\s+AC\s+[\dX]+\s+to\s+(?P<store_name>.+?)\s+on\s+[\d\-/\w]+\.?\s*UPI\s+Ref",
-            re.IGNORECASE,
-        ),
-    },
-]
+
+def load_templates_from_json(json_file_path: str) -> list[dict]:
+    """Loads template rules from a JSON file and compiles string patterns into regex objects."""
+    with open(json_file_path, "r", encoding="utf-8") as f:
+        templates_raw = json.load(f)
+
+    compiled_templates = []
+    for tmpl in templates_raw:
+        compiled_templates.append({
+            "name": tmpl["name"],
+            "example": tmpl.get("example", ""),
+            "pattern": re.compile(tmpl["pattern"], re.IGNORECASE),
+        })
+
+    return compiled_templates
+
 
 def parse_xml_to_df(file_path: str, year: int, month: int) -> pd.DataFrame:
     """Parses XML and returns all SMS records for the target year and month."""
@@ -115,47 +89,53 @@ class SMSTemplateParser:
 
 def process_sms_backup(
     xml_file_path: str,
+    templates_json_path: str,
     year: int,
     month: int,
+    save_unfiltered: bool = True,
     unfiltered_csv_path: str = "unfiltered_sms.csv",
     extracted_csv_path: str = "extracted_data.csv",
     unresolved_csv_path: str = "unresolved_sms.csv",
 ):
-    save_unfiltered = False
-    # 1. Fetch SMS filtered by month and year
+
+    # 1. Load dynamic templates from JSON
+    templates = load_templates_from_json(templates_json_path)
+
+    # 2. Fetch SMS filtered by month and year
     filtered_df = parse_xml_to_df(xml_file_path, year, month)
 
-    # 2. Output 1: Save ALL unfiltered rows for selected month (overwrites on each run)
+    # 3. Save ALL unfiltered rows for selected month (if enabled)
     if save_unfiltered:
         filtered_df.to_csv(unfiltered_csv_path, index=False)
         print(
             f"Saved {len(filtered_df)} unfiltered records for {month}/{year} to '{unfiltered_csv_path}'"
         )
 
-    # 3. Process static templates
-    parser = SMSTemplateParser(TEMPLATES)
+    # 4. Process static templates
+    parser = SMSTemplateParser(templates)
     extracted_df, remaining_df = parser.parse_and_consume(filtered_df)
 
-    # 4. Output 2: Save Extracted Data
+    # 5. Output Extracted Data
     extracted_df.to_csv(extracted_csv_path, index=False)
     print(
         f"Saved {len(extracted_df)} extracted transactions to '{extracted_csv_path}'"
     )
 
-    # Save remaining unresolved messages to prepare for the upcoming LLM stage
+    # 6. Save remaining unresolved messages for LLM stage
     remaining_df.to_csv(unresolved_csv_path, index=False)
     print(
         f"Saved {len(remaining_df)} unresolved messages to '{unresolved_csv_path}'"
     )
 
 
-# --- Example Execution ---
+# --- Execution Example ---
 if __name__ == "__main__":
-    # Replace 'sms-sample.xml' with your backup file name
     process_sms_backup(
         xml_file_path="data/sms-20261002204925.xml",
+        templates_json_path="config/templates.json",
         year=2026,
         month=9,
+        save_unfiltered=False,
         unfiltered_csv_path="output/unfiltered_month_sms.csv",
         extracted_csv_path="output/extracted_transactions.csv",
         unresolved_csv_path="output/unresolved_for_llm.csv",
