@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMS Expense Analytics Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+  <header class="border-b border-slate-800 bg-slate-950/60 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap justify-between items-center gap-4">
+      <div>
+        <h1 class="text-xl font-bold text-white flex items-center gap-2">
+          <span class="p-2 bg-indigo-600 rounded-lg text-white">📊</span> SMS Expense Dashboard
+        </h1>
+        <p class="text-xs text-slate-400 mt-1">Local & Private CSV Transaction Analytics</p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="sampleBtn" class="px-3 py-2 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition border border-slate-700">
+          Load Sample Data
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+    <!-- Drag & Drop Upload Zone -->
+    <div id="dropZone" class="relative group border-2 border-dashed border-slate-700 hover:border-indigo-500 bg-slate-800/30 hover:bg-slate-800/60 rounded-2xl p-8 text-center transition-all duration-200 cursor-pointer">
+      <input type="file" id="csvFileInput" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+
+      <div id="dropZoneContent" class="space-y-3 pointer-events-none">
+        <div class="w-12 h-12 mx-auto rounded-full bg-slate-800 group-hover:bg-indigo-600/20 text-slate-400 group-hover:text-indigo-400 flex items-center justify-center transition-colors">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-medium text-slate-200">
+            <span class="text-indigo-400 font-semibold">Click to upload</span> or drag and drop your CSV file here
+          </p>
+          <p class="text-xs text-slate-500 mt-1">Supports extracted transactions CSV with date, transaction, type, amount, store_name, category</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters Bar -->
+    <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-wrap gap-4 items-center justify-between">
+      <div class="flex flex-wrap items-center gap-4 w-full md:w-auto">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Category Filter</label>
+          <select id="categoryFilter" class="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none w-40">
+            <option value="ALL">All Categories</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Type Filter</label>
+          <select id="typeFilter" class="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none w-36">
+            <option value="ALL">All Types</option>
+            <option value="debit">Debit Only</option>
+            <option value="credit">Credit Only</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Search Store</label>
+          <input type="text" id="searchInput" placeholder="Search merchant..." class="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none w-48">
+        </div>
+      </div>
+
+      <div class="text-xs text-slate-400" id="recordCount">Showing 0 transactions</div>
+    </div>
+
+    <!-- Key Metrics Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-5">
+        <span class="text-xs font-medium uppercase tracking-wider text-rose-400">Total Expenses</span>
+        <div class="text-2xl font-bold text-white mt-1" id="totalDebit">₹0.00</div>
+        <p class="text-xs text-slate-400 mt-1" id="debitCount">0 debit transactions</p>
+      </div>
+
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-5">
+        <span class="text-xs font-medium uppercase tracking-wider text-emerald-400">Total Credits / Refunds</span>
+        <div class="text-2xl font-bold text-white mt-1" id="totalCredit">₹0.00</div>
+        <p class="text-xs text-slate-400 mt-1" id="creditCount">0 credit transactions</p>
+      </div>
+
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-5">
+        <span class="text-xs font-medium uppercase tracking-wider text-indigo-400">Net Cash Outflow</span>
+        <div class="text-2xl font-bold text-white mt-1" id="netAmount">₹0.00</div>
+        <p class="text-xs text-slate-400 mt-1">Expenses minus Credits</p>
+      </div>
+
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-5">
+        <span class="text-xs font-medium uppercase tracking-wider text-amber-400">Top Spend Category</span>
+        <div class="text-2xl font-bold text-white mt-1 truncate" id="topCategory">-</div>
+        <p class="text-xs text-slate-400 mt-1" id="topCategoryAmount">₹0.00 spent</p>
+      </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-5 lg:col-span-2">
+        <h3 class="text-sm font-semibold text-slate-200 mb-4">Daily Transaction Flow</h3>
+        <div class="h-64 relative">
+          <canvas id="timelineChart"></canvas>
+        </div>
+      </div>
+
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-5">
+        <h3 class="text-sm font-semibold text-slate-200 mb-4">Category Breakdown</h3>
+        <div class="h-64 relative flex items-center justify-center">
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+
+      <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-5 lg:col-span-3">
+        <h3 class="text-sm font-semibold text-slate-200 mb-4">Top Stores / Merchants by Expenditure</h3>
+        <div class="h-64 relative">
+          <canvas id="merchantChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="bg-slate-800/40 border border-slate-700/60 rounded-xl overflow-hidden">
+      <div class="p-4 border-b border-slate-700/60 flex justify-between items-center">
+        <h3 class="text-sm font-semibold text-slate-200">Transaction History</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-300">
+          <thead class="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-slate-700">
+            <tr>
+              <th class="px-4 py-3">Date</th>
+              <th class="px-4 py-3">Store Name</th>
+              <th class="px-4 py-3">Category</th>
+              <th class="px-4 py-3">Transaction</th>
+              <th class="px-4 py-3">Type</th>
+              <th class="px-4 py-3 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="transactionTableBody" class="divide-y divide-slate-700/50">
+            <tr>
+              <td colspan="6" class="px-4 py-8 text-center text-slate-500">
+                No CSV data loaded. Drag and drop your CSV above or click "Load Sample Data".
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let rawData = [];
+    let filteredData = [];
+    let charts = {};
+
+    const SAMPLE_DATA = [
+      { date: "2026-09-01 10:15:00", transaction: "kotak_upi_transfer", type: "debit", amount: "149.00", store_name: "ISS GLOBAL", category: "Services" },
+      { date: "2026-09-02 14:30:00", transaction: "hdfc_upi_transfer", type: "debit", amount: "500.00", store_name: "Swiggy", category: "Food" },
+      { date: "2026-09-10 18:22:00", transaction: "hdfc_card_spend", type: "debit", amount: "1,499.00", store_name: "MYNTRA IN BANGALORE", category: "Clothing" },
+      { date: "2026-09-11 11:00:00", transaction: "unknown_trx", type: "debit", amount: "200.00", store_name: "Ignored Merchant", category: "NA" },
+      { date: "2026-09-12 12:05:00", transaction: "icici_card_spend", type: "debit", amount: "2,350.00", store_name: "Zomato", category: "Food" },
+      { date: "2026-09-15 09:40:00", transaction: "hdfc_card_refund", type: "credit", amount: "450.00", store_name: "Swiggy", category: "Food" },
+      { date: "2026-09-20 20:00:00", transaction: "hdfc_ac_autodebit", type: "debit", amount: "500.00", store_name: "Netflix", category: "Entertainment" },
+      { date: "2026-09-25 11:10:00", transaction: "hdfc_card_spend", type: "debit", amount: "3,200.00", store_name: "Amazon Pay", category: "Shopping" }
+    ];
+
+    document.addEventListener("DOMContentLoaded", () => {
+      setupDragAndDrop();
+      document.getElementById("sampleBtn").addEventListener("click", () => processData(SAMPLE_DATA, "Sample Data"));
+
+      document.getElementById("categoryFilter").addEventListener("change", applyFilters);
+      document.getElementById("typeFilter").addEventListener("change", applyFilters);
+      document.getElementById("searchInput").addEventListener("input", applyFilters);
+    });
+
+    function setupDragAndDrop() {
+      const dropZone = document.getElementById("dropZone");
+      const fileInput = document.getElementById("csvFileInput");
+
+      ["dragenter", "dragover"].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.add("border-indigo-500", "bg-slate-800/80");
+        }, false);
+      });
+
+      ["dragleave", "drop"].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.remove("border-indigo-500", "bg-slate-800/80");
+        }, false);
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file) parseCSVFile(file);
+      });
+    }
+
+    function parseCSVFile(file) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => processData(results.data, file.name),
+        error: (err) => alert("Failed to parse CSV file: " + err.message)
+      });
+    }
+
+    function processData(data, filename = "") {
+      // Disregard any data row where category is "NA"
+      rawData = data
+        .filter(item => {
+          const cat = (item.category || "").trim().toUpperCase();
+          return cat !== "NA";
+        })
+        .map(item => ({
+          date: item.date || "",
+          transaction: item.transaction || "",
+          type: (item.type || "debit").toLowerCase().trim(),
+          amount: parseFloat(String(item.amount || "0").replace(/,/g, "")) || 0,
+          store_name: item.store_name || "Unknown",
+          category: item.category || "Others"
+        }));
+
+      // Update drop zone appearance to reflect loaded state
+      if (filename) {
+        document.getElementById("dropZoneContent").innerHTML = `
+          <div class="text-emerald-400 font-medium flex items-center justify-center gap-2">
+            <span>✅</span> Loaded <strong>${filename}</strong> (${rawData.length} valid entries)
+          </div>
+          <p class="text-xs text-slate-400">Click or drag another CSV here to replace data</p>
+        `;
+      }
+
+      populateCategoryFilter();
+      applyFilters();
+    }
+
+    function populateCategoryFilter() {
+      const dropdown = document.getElementById("categoryFilter");
+      const categories = [...new Set(rawData.map(d => d.category))].sort();
+
+      dropdown.innerHTML = '<option value="ALL">All Categories</option>';
+      categories.forEach(cat => {
+        const option = document.createElement("option");
+        option.value = cat;
+        option.textContent = cat;
+        dropdown.appendChild(option);
+      });
+    }
+
+    function applyFilters() {
+      const selectedCategory = document.getElementById("categoryFilter").value;
+      const selectedType = document.getElementById("typeFilter").value;
+      const searchQuery = document.getElementById("searchInput").value.toLowerCase();
+
+      filteredData = rawData.filter(item => {
+        const matchesCategory = selectedCategory === "ALL" || item.category === selectedCategory;
+        const matchesType = selectedType === "ALL" || item.type === selectedType;
+        const matchesSearch = item.store_name.toLowerCase().includes(searchQuery) ||
+                              item.transaction.toLowerCase().includes(searchQuery);
+        return matchesCategory && matchesType && matchesSearch;
+      });
+
+      updateMetrics();
+      updateCharts();
+      updateTable();
+    }
+
+    function updateMetrics() {
+      let totalDebit = 0;
+      let totalCredit = 0;
+      let debitCount = 0;
+      let creditCount = 0;
+      const categoryTotals = {};
+
+      filteredData.forEach(item => {
+        if (item.type === "debit") {
+          totalDebit += item.amount;
+          debitCount++;
+          categoryTotals[item.category] = (categoryTotals[item.category] || 0) + item.amount;
+        } else if (item.type === "credit") {
+          totalCredit += item.amount;
+          creditCount++;
+        }
+      });
+
+      let topCat = "-";
+      let topCatMax = 0;
+      for (const [cat, amt] of Object.entries(categoryTotals)) {
+        if (amt > topCatMax) {
+          topCatMax = amt;
+          topCat = cat;
+        }
+      }
+
+      document.getElementById("totalDebit").textContent = `₹${totalDebit.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+      document.getElementById("debitCount").textContent = `${debitCount} debit transactions`;
+
+      document.getElementById("totalCredit").textContent = `₹${totalCredit.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+      document.getElementById("creditCount").textContent = `${creditCount} credit transactions`;
+
+      const netOutflow = totalDebit - totalCredit;
+      document.getElementById("netAmount").textContent = `₹${netOutflow.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+
+      document.getElementById("topCategory").textContent = topCat;
+      document.getElementById("topCategoryAmount").textContent = `₹${topCatMax.toLocaleString('en-IN', {minimumFractionDigits: 2})} spent`;
+
+      document.getElementById("recordCount").textContent = `Showing ${filteredData.length} of ${rawData.length} transactions`;
+    }
+
+    function updateCharts() {
+      // 1. Daily Timeline Chart
+      const timelineMap = {};
+      filteredData.forEach(item => {
+        const day = item.date.split(" ")[0] || item.date.split("T")[0] || "Unknown";
+        if (!timelineMap[day]) timelineMap[day] = { debit: 0, credit: 0 };
+        if (item.type === "debit") timelineMap[day].debit += item.amount;
+        if (item.type === "credit") timelineMap[day].credit += item.amount;
+      });
+
+      const sortedDates = Object.keys(timelineMap).sort();
+      const debitSeries = sortedDates.map(d => timelineMap[d].debit);
+      const creditSeries = sortedDates.map(d => timelineMap[d].credit);
+
+      renderChart("timelineChart", {
+        type: "bar",
+        data: {
+          labels: sortedDates,
+          datasets: [
+            { label: "Debit (Expenses)", data: debitSeries, backgroundColor: "rgba(244, 63, 94, 0.7)" },
+            { label: "Credit (Refunds)", data: creditSeries, backgroundColor: "rgba(16, 185, 129, 0.7)" }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { color: "#94a3b8" } }, y: { ticks: { color: "#94a3b8" } } } }
+      });
+
+      // 2. Category Doughnut Chart
+      const categoryMap = {};
+      filteredData.filter(d => d.type === "debit").forEach(item => {
+        categoryMap[item.category] = (categoryMap[item.category] || 0) + item.amount;
+      });
+
+      renderChart("categoryChart", {
+        type: "doughnut",
+        data: {
+          labels: Object.keys(categoryMap),
+          datasets: [{
+            data: Object.values(categoryMap),
+            backgroundColor: ["#f43f5e", "#6366f1", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"]
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { color: "#94a3b8" } } } }
+      });
+
+      // 3. Merchant Horizontal Bar Chart
+      const merchantMap = {};
+      filteredData.filter(d => d.type === "debit").forEach(item => {
+        merchantMap[item.store_name] = (merchantMap[item.store_name] || 0) + item.amount;
+      });
+
+      const sortedMerchants = Object.entries(merchantMap)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 7);
+
+      renderChart("merchantChart", {
+        type: "bar",
+        data: {
+          labels: sortedMerchants.map(m => m[0]),
+          datasets: [{
+            label: "Total Spent (₹)",
+            data: sortedMerchants.map(m => m[1]),
+            backgroundColor: "rgba(99, 102, 241, 0.8)"
+          }]
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { x: { ticks: { color: "#94a3b8" } }, y: { ticks: { color: "#94a3b8" } } }
+        }
+      });
+    }
+
+    function renderChart(canvasId, config) {
+      if (charts[canvasId]) {
+        charts[canvasId].destroy();
+      }
+      const ctx = document.getElementById(canvasId).getContext("2d");
+      charts[canvasId] = new Chart(ctx, config);
+    }
+
+    function updateTable() {
+      const tbody = document.getElementById("transactionTableBody");
+      tbody.innerHTML = "";
+
+      if (filteredData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">No transactions match current filters.</td></tr>`;
+        return;
+      }
+
+      filteredData.forEach(item => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-800/50 transition";
+
+        const isCredit = item.type === "credit";
+        const badgeClass = isCredit
+          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+          : "bg-rose-500/10 text-rose-400 border-rose-500/20";
+
+        tr.innerHTML = `
+          <td class="px-4 py-3 font-mono text-xs text-slate-400">${item.date}</td>
+          <td class="px-4 py-3 font-medium text-slate-100">${item.store_name}</td>
+          <td class="px-4 py-3"><span class="px-2 py-0.5 text-xs rounded bg-slate-800 text-slate-300 border border-slate-700">${item.category}</span></td>
+          <td class="px-4 py-3 font-mono text-xs text-slate-400">${item.transaction}</td>
+          <td class="px-4 py-3"><span class="px-2 py-0.5 text-xs rounded uppercase font-semibold border ${badgeClass}">${item.type}</span></td>
+          <td class="px-4 py-3 text-right font-semibold font-mono ${isCredit ? 'text-emerald-400' : 'text-slate-100'}">
+            ${isCredit ? '+' : '-'}₹${item.amount.toLocaleString('en-IN', {minimumFractionDigits: 2})}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+  </script>
+</body>
+</html>

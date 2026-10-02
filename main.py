@@ -23,6 +23,30 @@ def load_templates_from_json(json_file_path: str) -> list[dict]:
     return compiled_templates
 
 
+def load_store_map(store_map_path: str) -> dict[str, str]:
+    """Loads store-to-category mapping from a JSON file."""
+    if os.path.exists(store_map_path):
+        with open(store_map_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def classify_store(
+    store_name: str, store_map: dict[str, str], default_category: str = "Others"
+) -> str:
+    """Classifies a store name by checking if any keyword in store_map exists within store_name."""
+    if not store_name:
+        return default_category
+
+    store_name_upper = store_name.upper()
+
+    for keyword, category in store_map.items():
+        if keyword.upper() in store_name_upper:
+            return category
+
+    return default_category
+
+
 def parse_xml_to_df(file_path: str, year: int, month: int) -> pd.DataFrame:
     """Parses XML and returns all SMS records for the target year and month."""
     tree = ET.parse(file_path)
@@ -48,11 +72,12 @@ def parse_xml_to_df(file_path: str, year: int, month: int) -> pd.DataFrame:
 
 class SMSTemplateParser:
 
-    def __init__(self, templates: list[dict]):
+    def __init__(self, templates: list[dict], store_map: dict[str, str]):
         self.templates = templates
+        self.store_map = store_map
 
     def parse_and_consume(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Matches entries against templates and separates resolved from unresolved rows."""
+        """Matches entries against templates, classifies store categories, and separates resolved from unresolved rows."""
         resolved_records = []
         unresolved_indices = []
 
@@ -64,14 +89,16 @@ class SMSTemplateParser:
                 match = tmpl["pattern"].search(body)
                 if match:
                     extracted_fields = match.groupdict()
+                    raw_store_name = extracted_fields.get("store_name", "").strip()
+                    category = classify_store(raw_store_name, self.store_map)
+
                     record = {
                         "date": row["date"],
                         "transaction": tmpl["name"],
                         "type": tmpl["type"],
                         "amount": extracted_fields.get("amount"),
-                        "store_name": extracted_fields.get(
-                            "store_name"
-                        ).strip(),
+                        "store_name": raw_store_name,
+                        "category": category,
                     }
                     resolved_records.append(record)
                     matched = True
@@ -82,7 +109,14 @@ class SMSTemplateParser:
 
         extracted_df = pd.DataFrame(
             resolved_records,
-            columns=["date", "transaction","type", "amount", "store_name"],
+            columns=[
+                "date",
+                "transaction",
+                "type",
+                "amount",
+                "store_name",
+                "category",
+            ],
         )
         remaining_df = df.loc[unresolved_indices].reset_index(drop=True)
 
@@ -92,6 +126,7 @@ class SMSTemplateParser:
 def process_sms_backup(
     xml_file_path: str,
     templates_json_path: str,
+    store_map_json_path: str,
     year: int,
     month: int,
     save_unfiltered: bool = True,
@@ -100,8 +135,9 @@ def process_sms_backup(
     unresolved_csv_path: str = "unresolved_sms.csv",
 ):
 
-    # 1. Load dynamic templates from JSON
+    # 1. Load dynamic templates & store map from JSON
     templates = load_templates_from_json(templates_json_path)
+    store_map = load_store_map(store_map_json_path)
 
     # 2. Fetch SMS filtered by month and year
     filtered_df = parse_xml_to_df(xml_file_path, year, month)
@@ -113,8 +149,8 @@ def process_sms_backup(
             f"Saved {len(filtered_df)} unfiltered records for {month}/{year} to '{unfiltered_csv_path}'"
         )
 
-    # 4. Process static templates
-    parser = SMSTemplateParser(templates)
+    # 4. Process static templates and categorize stores
+    parser = SMSTemplateParser(templates, store_map)
     extracted_df, remaining_df = parser.parse_and_consume(filtered_df)
 
     # 5. Output Extracted Data
@@ -135,6 +171,7 @@ if __name__ == "__main__":
     process_sms_backup(
         xml_file_path="data/sms-20261002204925.xml",
         templates_json_path="config/templates.json",
+        store_map_json_path="config/store_map.json",
         year=2026,
         month=9,
         save_unfiltered=False,
