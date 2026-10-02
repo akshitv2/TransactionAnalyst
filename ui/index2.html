@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Transaction Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#131e32',
+                            900: '#0f172a',
+                            950: '#080d1a',
+                        },
+                        brand: {
+                            50: '#f0f6ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(51, 65, 85, 0.8);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(71, 85, 105, 1);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased flex flex-col">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+            <!-- Brand & Title -->
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                    <i class="fa-solid fa-chart-line text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        Pulse<span class="text-blue-500 font-normal">Finance</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">CSV Transaction Insights</p>
+                </div>
+            </div>
+
+            <!-- Upload & Quick Action Buttons -->
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <button id="loadSampleBtn" onclick="loadSampleData()" class="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                    <span class="hidden xs:inline">Load Sample Data</span>
+                </button>
+                <label for="csvFileInput" class="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition shadow-md shadow-blue-600/30 cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-file-csv"></i>
+                    <span>Upload CSV</span>
+                </label>
+                <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleFileSelect(event)">
+            </div>
+        </div>
+    </header>
+
+    <!-- Notification Toast Container -->
+    <div id="toastContainer" class="fixed top-20 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Upload Drag & Drop Dropzone -->
+        <div id="dropZone" class="border-2 border-dashed border-slate-800 hover:border-blue-500/50 bg-slate-900/40 hover:bg-slate-900/80 transition-all rounded-2xl p-4 sm:p-6 text-center cursor-pointer relative overflow-hidden group">
+            <input type="file" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)">
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3 text-slate-400 group-hover:text-slate-300">
+                <div class="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-blue-400 group-hover:scale-110 transition">
+                    <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                </div>
+                <div class="text-sm text-center sm:text-left">
+                    <span class="font-semibold text-slate-200">Drag & drop your CSV file here</span> or <span class="text-blue-400 underline">browse</span>
+                    <p class="text-xs text-slate-500 mt-0.5">Supports CSV with <code class="bg-slate-800 px-1 py-0.5 rounded text-slate-300">date,transaction,type,amount,store_name,category</code> (NA categories filtered automatically)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Date & Mode Navigation Toolbar -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+
+            <!-- View Mode Switcher -->
+            <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800/80 w-full md:w-auto">
+                <button id="viewMonthlyBtn" onclick="setViewMode('monthly')" class="flex-1 md:flex-none px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition bg-blue-600 text-white shadow">
+                    <i class="fa-solid fa-calendar-day mr-1.5"></i> Monthly View
+                </button>
+                <button id="viewAllTimeBtn" onclick="setViewMode('allTime')" class="flex-1 md:flex-none px-4 py-2 text-xs sm:text-sm font-medium rounded-lg text-slate-400 hover:text-slate-200 transition">
+                    <i class="fa-solid fa-infinity mr-1.5"></i> All Time View
+                </button>
+            </div>
+
+            <!-- Month/Year Control Suite -->
+            <div id="monthNavigationControls" class="flex items-center justify-center gap-2 sm:gap-3 w-full md:w-auto">
+                <button onclick="navigateMonth(-1)" class="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition active:scale-95">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+
+                <div class="flex items-center space-x-2">
+                    <select id="monthSelect" onchange="onDateSelectChange()" class="bg-slate-800 border border-slate-700 text-slate-100 text-sm font-medium rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
+                        <option value="0">January</option>
+                        <option value="1">February</option>
+                        <option value="2">March</option>
+                        <option value="3">April</option>
+                        <option value="4">May</option>
+                        <option value="5">June</option>
+                        <option value="6">July</option>
+                        <option value="7">August</option>
+                        <option value="8">September</option>
+                        <option value="9">October</option>
+                        <option value="10">November</option>
+                        <option value="11">December</option>
+                    </select>
+
+                    <select id="yearSelect" onchange="onDateSelectChange()" class="bg-slate-800 border border-slate-700 text-slate-100 text-sm font-medium rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+
+                <button onclick="navigateMonth(1)" class="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition active:scale-95">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+
+            <!-- Current Period Heading Label -->
+            <div class="text-right hidden lg:block">
+                <div id="currentPeriodDisplay" class="text-base font-bold text-slate-100">September 2026</div>
+                <div id="transactionCountBadge" class="text-xs text-slate-400">0 transactions found</div>
+            </div>
+        </div>
+
+        <!-- KPI Summary Cards Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+
+            <!-- Credit Card Net Spends Card -->
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 hover:border-slate-700 transition relative overflow-hidden group">
+                <div class="absolute -right-2 -bottom-2 w-20 h-20 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition"></div>
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Card Spend (Net)</span>
+                    <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                        <i class="fa-solid fa-credit-card"></i>
+                    </div>
+                </div>
+                <div id="kpiCardSpend" class="text-2xl font-bold text-slate-100 tracking-tight">₹0.00</div>
+                <div id="kpiCardSubtext" class="text-[11px] text-slate-400 mt-1 truncate">HDFC & ICICI Net Cards</div>
+            </div>
+
+            <!-- Total Debits Card -->
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 hover:border-slate-700 transition relative overflow-hidden group">
+                <div class="absolute -right-2 -bottom-2 w-20 h-20 bg-rose-500/10 rounded-full blur-xl group-hover:bg-rose-500/20 transition"></div>
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Debits</span>
+                    <div class="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                    </div>
+                </div>
+                <div id="kpiTotalDebits" class="text-2xl font-bold text-rose-400 tracking-tight">₹0.00</div>
+                <div class="text-[11px] text-slate-400 mt-1">All expenses & outflows</div>
+            </div>
+
+            <!-- Total Credits Card -->
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 hover:border-slate-700 transition relative overflow-hidden group">
+                <div class="absolute -right-2 -bottom-2 w-20 h-20 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition"></div>
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Credits</span>
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                        <i class="fa-solid fa-arrow-down-left-and-arrow-up-right-to-center rotate-180"></i>
+                    </div>
+                </div>
+                <div id="kpiTotalCredits" class="text-2xl font-bold text-emerald-400 tracking-tight">₹0.00</div>
+                <div class="text-[11px] text-slate-400 mt-1">Inflows & refunds</div>
+            </div>
+
+            <!-- Net Balance / Cashflow Card -->
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 hover:border-slate-700 transition relative overflow-hidden group">
+                <div class="absolute -right-2 -bottom-2 w-20 h-20 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition"></div>
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Net Cash Flow</span>
+                    <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                        <i class="fa-solid fa-scale-balanced"></i>
+                    </div>
+                </div>
+                <div id="kpiNetCashFlow" class="text-2xl font-bold text-slate-100 tracking-tight">₹0.00</div>
+                <div class="text-[11px] text-slate-400 mt-1">Credits minus Debits</div>
+            </div>
+
+            <!-- Top Expense Category Card -->
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 hover:border-slate-700 transition relative overflow-hidden group">
+                <div class="absolute -right-2 -bottom-2 w-20 h-20 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition"></div>
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Top Category</span>
+                    <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                        <i class="fa-solid fa-fire"></i>
+                    </div>
+                </div>
+                <div id="kpiTopCategory" class="text-xl font-bold text-amber-300 truncate tracking-tight">N/A</div>
+                <div id="kpiTopCategoryAmount" class="text-[11px] text-slate-400 mt-1">₹0.00 spent</div>
+            </div>
+
+        </div>
+
+        <!-- Visualizations Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Daily Spending Trend Line Chart -->
+            <div class="lg:col-span-2 bg-slate-900 border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-area text-blue-400"></i> Daily Spending Trend
+                        </h2>
+                        <p class="text-xs text-slate-400">Day-by-day debit breakdown for selected timeline</p>
+                    </div>
+                    <span class="text-xs font-medium text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700" id="dailyTrendLabel">Daily Spending</span>
+                </div>
+                <div class="relative flex-1 min-h-[260px] w-full">
+                    <canvas id="dailyTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Category Distribution Donut Chart -->
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-col">
+                <div class="mb-4">
+                    <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-indigo-400"></i> Category Breakdown
+                    </h2>
+                    <p class="text-xs text-slate-400">Expenses grouped by valid categories</p>
+                </div>
+                <div class="relative flex-1 min-h-[260px] flex items-center justify-center">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Payment Method Distribution Bar Chart -->
+            <div class="lg:col-span-2 bg-slate-900 border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-col">
+                <div class="mb-4">
+                    <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-wallet text-emerald-400"></i> Channel & Payment Method Distribution
+                    </h2>
+                    <p class="text-xs text-slate-400">Comparison across cards, UPI transfers, and auto-debits</p>
+                </div>
+                <div class="relative flex-1 min-h-[250px]">
+                    <canvas id="methodChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Top Merchants List -->
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-col">
+                <div class="mb-4">
+                    <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-store text-amber-400"></i> Top 5 Merchants / Stores
+                    </h2>
+                    <p class="text-xs text-slate-400">Highest volume spending destinations</p>
+                </div>
+                <div id="topMerchantsContainer" class="space-y-3.5 flex-1 overflow-y-auto pr-1">
+                    <!-- Dynamic Progress list -->
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Detailed Transaction Table Section -->
+        <div class="bg-slate-900 border border-slate-800/90 rounded-2xl shadow-xl overflow-hidden">
+
+            <!-- Table Controls Header -->
+            <div class="p-5 border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-blue-400"></i> Transaction Records
+                    </h2>
+                    <p class="text-xs text-slate-400">Filter, search, and inspect individual transaction logs</p>
+                </div>
+
+                <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
+                    <!-- Search Input -->
+                    <div class="relative flex-1 sm:w-64">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                        <input type="text" id="searchInput" oninput="filterTable()" placeholder="Search store, category..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    </div>
+
+                    <!-- Category Filter Dropdown -->
+                    <select id="categoryFilter" onchange="filterTable()" class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                        <option value="ALL">All Categories</option>
+                    </select>
+
+                    <!-- Method Filter Dropdown -->
+                    <select id="methodFilter" onchange="filterTable()" class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                        <option value="ALL">All Channels</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Table Structure -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-950/80 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+                        <tr>
+                            <th class="py-3.5 px-4">Date & Time</th>
+                            <th class="py-3.5 px-4">Store / Merchant</th>
+                            <th class="py-3.5 px-4">Payment Method</th>
+                            <th class="py-3.5 px-4">Category</th>
+                            <th class="py-3.5 px-4">Type</th>
+                            <th class="py-3.5 px-4 text-right">Amount (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Table Footer & Pagination Info -->
+            <div class="px-5 py-3.5 bg-slate-950/50 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <span id="showingRecordsCount">Showing 0 transactions</span>
+                <div class="flex items-center space-x-2">
+                    <button id="prevPageBtn" onclick="changePage(-1)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-chevron-left mr-1"></i> Prev
+                    </button>
+                    <span id="pageIndicator" class="font-medium text-slate-300">Page 1 of 1</span>
+                    <button id="nextPageBtn" onclick="changePage(1)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed">
+                        Next <i class="fa-solid fa-chevron-right ml-1"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-950 py-4 mt-8 text-center text-xs text-slate-500">
+        PulseFinance Transaction Analytics Engine &bull; Formatted for INR (₹) Financial Records
+    </footer>
+
+    <!-- JavaScript Application Engine -->
+    <script>
+        // Global App State
+        let allTransactions = [];
+        let filteredTransactions = [];
+        let viewMode = 'monthly';
+        let selectedYear = 2026;
+        let selectedMonth = 8; // 0-indexed: 8 = September
+        let currentPage = 1;
+        const rowsPerPage = 12;
+
+        // Chart instances
+        let trendChartInstance = null;
+        let categoryChartInstance = null;
+        let methodChartInstance = null;
+
+        // Sample CSV Data (includes rows with 'NA', 'N/A', empty categories to demonstrate filtering)
+        const SAMPLE_CSV = `date,transaction,type,amount,store_name,category
+2026-08-01 09:15:00.000,hdfc_upi_transfer,debit,450.00,Swiggy,DINING
+2026-08-05 14:22:10.120,icici_card_spend,debit,3200.00,Flipkart,SHOPPING
+2026-08-10 11:00:00.000,hdfc_ac_autodebit,debit,15000.00,Zerodha,INVEST
+2026-08-15 18:40:11.000,kotak_upi_transfer,debit,1200.00,DMart,GROCERIES
+2026-08-25 10:00:00.000,hdfc_card_refund,credit,800.00,Amazon India,REFUND
+2026-09-01 10:19:11.764,hdfc_ac_autodebit,debit,10000.00,Indian Clearing Corporation,INVEST
+2026-09-01 12:45:30.000,hdfc_card_spend,debit,2499.00,Zomato,DINING
+2026-09-02 18:20:15.500,kotak_upi_transfer,debit,1450.00,DMart,GROCERIES
+2026-09-02 21:00:00.000,hdfc_upi_transfer,debit,120.00,Unknown Vendor,NA
+2026-09-03 09:10:00.000,icici_card_spend,debit,12500.00,Apple Store,ELECTRONICS
+2026-09-04 16:05:44.200,hdfc_card_spend,debit,650.00,Uber,TRAVEL
+2026-09-05 11:30:22.000,hdfc_card_refund,credit,1200.00,Amazon India,REFUND
+2026-09-06 20:15:10.000,hdfc_upi_transfer,debit,350.00,Starbucks,DINING
+2026-09-06 22:10:00.000,kotak_upi_transfer,debit,500.00,Corner Shop,N/A
+2026-09-07 08:00:00.000,kotak_upi_transfer,credit,75000.00,Acme Corp Salary,SALARY
+2026-09-08 14:12:00.000,hdfc_card_spend,debit,4800.00,Myntra,SHOPPING
+2026-09-10 19:40:00.000,icici_card_spend,debit,3100.00,Swiggy,DINING
+2026-09-12 10:05:30.000,hdfc_ac_autodebit,debit,2200.00,Electricity Board,UTILITIES
+2026-09-14 17:30:00.000,kotak_upi_transfer,debit,1850.00,Apollo Pharmacy,HEALTH
+2026-09-15 13:20:00.000,hdfc_card_spend,debit,8999.00,MakeMyTrip,TRAVEL
+2026-09-16 21:00:00.000,icici_card_spend,debit,649.00,Netflix,ENTERTAINMENT
+2026-09-18 11:45:12.000,hdfc_upi_transfer,debit,520.00,Local Bakery,GROCERIES
+2026-09-19 14:00:00.000,hdfc_card_spend,debit,300.00,Kiosk,
+2026-09-20 15:10:00.000,hdfc_card_spend,debit,15400.00,Croma,ELECTRONICS
+2026-09-21 12:00:00.000,hdfc_card_refund,credit,2499.00,Zomato,REFUND
+2026-09-22 19:30:00.000,kotak_upi_transfer,debit,890.00,Blinkit,GROCERIES
+2026-09-24 10:20:00.000,hdfc_ac_autodebit,debit,5000.00,Mutual Fund SIP,INVEST
+2026-09-26 16:40:00.000,icici_card_spend,debit,3200.00,Zara,SHOPPING
+2026-09-28 20:00:00.000,hdfc_upi_transfer,debit,1100.00,BookMyShow,ENTERTAINMENT
+2026-09-29 18:15:00.000,hdfc_card_spend,debit,2750.00,Fuel Station,TRAVEL
+2026-09-30 22:10:00.000,kotak_upi_transfer,debit,1600.00,Swiggy,DINING
+2026-10-01 09:00:00.000,hdfc_ac_autodebit,debit,10000.00,Indian Clearing Corporation,INVEST
+2026-10-02 14:10:00.000,hdfc_card_spend,debit,4200.00,Amazon India,SHOPPING`;
+
+        // On Window Load
+        window.onload = function() {
+            setupDragAndDrop();
+            loadSampleData();
+        };
+
+        // Load Sample Data Handler
+        function loadSampleData() {
+            parseCSVContent(SAMPLE_CSV);
+            showToast('Loaded sample dataset (NA categories automatically disregarded)!', 'success');
+        }
+
+        // Handle File Selection
+        function handleFileSelect(evt) {
+            const file = evt.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                parseCSVContent(e.target.result);
+                showToast(`Loaded ${file.name} successfully!`, 'success');
+            };
+            reader.onerror = function() {
+                showToast('Error reading CSV file.', 'error');
+            };
+            reader.readAsText(file);
+        }
+
+        // Drag & Drop Setup
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('dropZone');
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.add('border-blue-500', 'bg-slate-900');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.remove('border-blue-500', 'bg-slate-900');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0) {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        parseCSVContent(evt.target.result);
+                        showToast(`Uploaded ${files[0].name}`, 'success');
+                    };
+                    reader.readAsText(files[0]);
+                }
+            }, false);
+        }
+
+        // Helper: Check if Category is Invalid or 'NA'
+        function isNaCategory(catStr) {
+            if (!catStr) return true;
+            const cleaned = catStr.toString().trim().toUpperCase();
+            return (
+                cleaned === '' ||
+                cleaned === 'NA' ||
+                cleaned === 'N/A' ||
+                cleaned === 'NULL' ||
+                cleaned === 'NONE' ||
+                cleaned === 'UNDEFINED'
+            );
+        }
+
+        // Core CSV Parsing Logic using PapaParse
+        function parseCSVContent(csvText) {
+            Papa.parse(csvText.trim(), {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false,
+                complete: function(results) {
+                    if (results.errors && results.errors.length > 0) {
+                        console.warn("CSV Warnings/Errors:", results.errors);
+                    }
+
+                    const parsedData = [];
+                    let ignoredCount = 0;
+
+                    results.data.forEach((row, idx) => {
+                        const cleanRow = {};
+                        Object.keys(row).forEach(key => {
+                            if (key) cleanRow[key.trim().toLowerCase()] = row[key];
+                        });
+
+                        const rawCategory = cleanRow['category'];
+
+                        // FILTER OUT ALL DATA WITH CATEGORY NA / N/A / BLANK / NULL / NONE
+                        if (isNaCategory(rawCategory)) {
+                            ignoredCount++;
+                            return; // Disregard this record
+                        }
+
+                        const rawDate = cleanRow['date'] || cleanRow['timestamp'] || '';
+                        const dateObj = new Date(rawDate);
+                        const amountVal = parseFloat(cleanRow['amount']) || 0;
+                        const transactionType = (cleanRow['transaction'] || '').trim().toLowerCase();
+                        const typeVal = (cleanRow['type'] || 'debit').trim().toLowerCase();
+                        const storeName = (cleanRow['store_name'] || cleanRow['store'] || cleanRow['merchant'] || 'Unknown').trim();
+                        const categoryVal = rawCategory.trim().toUpperCase();
+
+                        if (!isNaN(dateObj.getTime()) && amountVal >= 0) {
+                            parsedData.push({
+                                id: idx + 1,
+                                dateObj: dateObj,
+                                rawDate: rawDate,
+                                year: dateObj.getFullYear(),
+                                month: dateObj.getMonth(), // 0-11
+                                day: dateObj.getDate(),
+                                transaction: transactionType,
+                                type: typeVal, // 'credit' or 'debit'
+                                amount: Math.abs(amountVal),
+                                store: storeName,
+                                category: categoryVal
+                            });
+                        }
+                    });
+
+                    if (ignoredCount > 0) {
+                        showToast(`Disregarded ${ignoredCount} record(s) with NA / missing category`, 'info');
+                    }
+
+                    if (parsedData.length === 0) {
+                        showToast('No valid transaction records found after filtering!', 'error');
+                        return;
+                    }
+
+                    // Sort newest to oldest
+                    parsedData.sort((a, b) => b.dateObj - a.dateObj);
+                    allTransactions = parsedData;
+
+                    // Update Year/Month options based on dataset
+                    populateDateSelectors();
+
+                    // Set default view to latest available month
+                    if (allTransactions.length > 0) {
+                        selectedYear = allTransactions[0].year;
+                        selectedMonth = allTransactions[0].month;
+                    }
+
+                    updateUI();
+                }
+            });
+        }
+
+        // Populate Month & Year Dropdowns dynamically
+        function populateDateSelectors() {
+            const yearSelect = document.getElementById('yearSelect');
+            const years = [...new Set(allTransactions.map(t => t.year))].sort((a, b) => b - a);
+
+            yearSelect.innerHTML = '';
+            years.forEach(y => {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y;
+                yearSelect.appendChild(opt);
+            });
+
+            // Populate category filter options
+            const categoryFilter = document.getElementById('categoryFilter');
+            const categories = [...new Set(allTransactions.map(t => t.category))].sort();
+            categoryFilter.innerHTML = '<option value="ALL">All Categories</option>';
+            categories.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                categoryFilter.appendChild(opt);
+            });
+
+            // Populate method filter options
+            const methodFilter = document.getElementById('methodFilter');
+            const methods = [...new Set(allTransactions.map(t => t.transaction))].sort();
+            methodFilter.innerHTML = '<option value="ALL">All Channels</option>';
+            methods.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = formatMethodLabel(m);
+                methodFilter.appendChild(opt);
+            });
+        }
+
+        // Date Change Listener
+        function onDateSelectChange() {
+            selectedYear = parseInt(document.getElementById('yearSelect').value);
+            selectedMonth = parseInt(document.getElementById('monthSelect').value);
+            updateUI();
+        }
+
+        // Month Navigation Arrows
+        function navigateMonth(direction) {
+            if (viewMode === 'allTime') {
+                setViewMode('monthly');
+            }
+            let newMonth = selectedMonth + direction;
+            let newYear = selectedYear;
+
+            if (newMonth < 0) {
+                newMonth = 11;
+                newYear--;
+            } else if (newMonth > 11) {
+                newMonth = 0;
+                newYear++;
+            }
+
+            const yearSelect = document.getElementById('yearSelect');
+            const hasYear = Array.from(yearSelect.options).some(opt => parseInt(opt.value) === newYear);
+
+            if (hasYear) {
+                selectedMonth = newMonth;
+                selectedYear = newYear;
+                document.getElementById('monthSelect').value = selectedMonth;
+                document.getElementById('yearSelect').value = selectedYear;
+                updateUI();
+            } else {
+                showToast(`No data for ${getMonthName(newMonth)} ${newYear}`, 'info');
+            }
+        }
+
+        // Set View Mode (Monthly vs All Time)
+        function setViewMode(mode) {
+            viewMode = mode;
+            const mBtn = document.getElementById('viewMonthlyBtn');
+            const aBtn = document.getElementById('viewAllTimeBtn');
+            const monthNav = document.getElementById('monthNavigationControls');
+
+            if (mode === 'monthly') {
+                mBtn.className = "flex-1 md:flex-none px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition bg-blue-600 text-white shadow";
+                aBtn.className = "flex-1 md:flex-none px-4 py-2 text-xs sm:text-sm font-medium rounded-lg text-slate-400 hover:text-slate-200 transition";
+                monthNav.style.opacity = "1";
+                monthNav.style.pointerEvents = "auto";
+            } else {
+                aBtn.className = "flex-1 md:flex-none px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition bg-blue-600 text-white shadow";
+                mBtn.className = "flex-1 md:flex-none px-4 py-2 text-xs sm:text-sm font-medium rounded-lg text-slate-400 hover:text-slate-200 transition";
+                monthNav.style.opacity = "0.4";
+                monthNav.style.pointerEvents = "none";
+            }
+            updateUI();
+        }
+
+        // Core UI Update Router
+        function updateUI() {
+            document.getElementById('monthSelect').value = selectedMonth;
+            document.getElementById('yearSelect').value = selectedYear;
+
+            if (viewMode === 'monthly') {
+                filteredTransactions = allTransactions.filter(t => t.year === selectedYear && t.month === selectedMonth);
+                const periodText = `${getMonthName(selectedMonth)} ${selectedYear}`;
+                document.getElementById('currentPeriodDisplay').innerText = periodText;
+                document.getElementById('dailyTrendLabel').innerText = `Daily Spending (${periodText})`;
+            } else {
+                filteredTransactions = [...allTransactions];
+                document.getElementById('currentPeriodDisplay').innerText = "All Time Overview";
+                document.getElementById('dailyTrendLabel').innerText = "Overall Monthly/Daily Spending";
+            }
+
+            document.getElementById('transactionCountBadge').innerText = `${filteredTransactions.length} transaction${filteredTransactions.length === 1 ? '' : 's'} found`;
+
+            calculateKPIs();
+
+            renderDailyTrendChart();
+            renderCategoryChart();
+            renderMethodChart();
+            renderTopMerchantsList();
+
+            currentPage = 1;
+            filterTable();
+        }
+
+        // Calculate and display KPI Metrics
+        function calculateKPIs() {
+            let cardSpends = 0;
+            let cardRefunds = 0;
+            let totalDebits = 0;
+            let totalCredits = 0;
+            const categoryDebits = {};
+
+            filteredTransactions.forEach(t => {
+                if (t.type === 'debit') {
+                    totalDebits += t.amount;
+
+                    if (t.transaction === 'hdfc_card_spend' || t.transaction === 'icici_card_spend') {
+                        cardSpends += t.amount;
+                    }
+
+                    categoryDebits[t.category] = (categoryDebits[t.category] || 0) + t.amount;
+                } else if (t.type === 'credit') {
+                    totalCredits += t.amount;
+
+                    if (t.transaction === 'hdfc_card_refund') {
+                        cardRefunds += t.amount;
+                    }
+                }
+            });
+
+            const netCardSpend = Math.max(0, cardSpends - cardRefunds);
+            const netCashFlow = totalCredits - totalDebits;
+
+            let topCat = 'N/A';
+            let topCatAmount = 0;
+            Object.entries(categoryDebits).forEach(([cat, val]) => {
+                if (val > topCatAmount) {
+                    topCatAmount = val;
+                    topCat = cat;
+                }
+            });
+
+            document.getElementById('kpiCardSpend').innerText = formatCurrency(netCardSpend);
+            document.getElementById('kpiCardSubtext').innerText = `Gross: ${formatCurrency(cardSpends)} | Ref: ${formatCurrency(cardRefunds)}`;
+            document.getElementById('kpiTotalDebits').innerText = formatCurrency(totalDebits);
+            document.getElementById('kpiTotalCredits').innerText = formatCurrency(totalCredits);
+
+            const netEl = document.getElementById('kpiNetCashFlow');
+            netEl.innerText = (netCashFlow >= 0 ? '+' : '') + formatCurrency(netCashFlow);
+            netEl.className = `text-2xl font-bold tracking-tight ${netCashFlow >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+
+            document.getElementById('kpiTopCategory').innerText = topCat;
+            document.getElementById('kpiTopCategoryAmount').innerText = `${formatCurrency(topCatAmount)} total debit`;
+        }
+
+        // 1. Daily Trend Chart
+        function renderDailyTrendChart() {
+            const ctx = document.getElementById('dailyTrendChart').getContext('2d');
+            if (trendChartInstance) trendChartInstance.destroy();
+
+            let labels = [];
+            let data = [];
+
+            if (viewMode === 'monthly') {
+                const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+                const dailyTotals = new Array(daysInMonth).fill(0);
+
+                filteredTransactions.forEach(t => {
+                    if (t.type === 'debit') {
+                        dailyTotals[t.day - 1] += t.amount;
+                    }
+                });
+
+                labels = Array.from({ length: daysInMonth }, (_, i) => `${i + 1} ${getMonthAbbr(selectedMonth)}`);
+                data = dailyTotals;
+            } else {
+                const monthMap = {};
+                filteredTransactions.forEach(t => {
+                    if (t.type === 'debit') {
+                        const key = `${t.year}-${String(t.month + 1).padStart(2, '0')}`;
+                        monthMap[key] = (monthMap[key] || 0) + t.amount;
+                    }
+                });
+                const sortedKeys = Object.keys(monthMap).sort();
+                labels = sortedKeys.map(k => {
+                    const [y, m] = k.split('-');
+                    return `${getMonthAbbr(parseInt(m) - 1)} ${y}`;
+                });
+                data = sortedKeys.map(k => monthMap[k]);
+            }
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, 250);
+            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+
+            trendChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Debits Spend (₹)',
+                        data: data,
+                        borderColor: '#3b82f6',
+                        borderWidth: 2.5,
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.35,
+                        pointBackgroundColor: '#2563eb',
+                        pointBorderColor: '#ffffff',
+                        pointHoverRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ` Spent: ${formatCurrency(context.raw)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: { color: '#94a3b8', font: { size: 10 } }
+                        },
+                        y: {
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: {
+                                color: '#94a3b8',
+                                font: { size: 10 },
+                                callback: function(val) { return '₹' + val.toLocaleString('en-IN'); }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. Category Distribution Doughnut Chart
+        function renderCategoryChart() {
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            if (categoryChartInstance) categoryChartInstance.destroy();
+
+            const categoryMap = {};
+            filteredTransactions.forEach(t => {
+                if (t.type === 'debit') {
+                    categoryMap[t.category] = (categoryMap[t.category] || 0) + t.amount;
+                }
+            });
+
+            const labels = Object.keys(categoryMap);
+            const data = Object.values(categoryMap);
+
+            const palette = [
+                '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899',
+                '#f59e0b', '#10b981', '#06b6d4', '#f43f5e', '#64748b'
+            ];
+
+            categoryChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels.length > 0 ? labels : ['No Data'],
+                    datasets: [{
+                        data: data.length > 0 ? data : [1],
+                        backgroundColor: data.length > 0 ? palette.slice(0, labels.length) : ['#334155'],
+                        borderWidth: 2,
+                        borderColor: '#0f172a'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#cbd5e1', font: { size: 11 }, boxWidth: 12, padding: 12 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (data.length === 0) return ' No transactions';
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const pct = ((context.raw / total) * 100).toFixed(1);
+                                    return ` ${context.label}: ${formatCurrency(context.raw)} (${pct}%)`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '68%'
+                }
+            });
+        }
+
+        // 3. Payment Method Distribution Chart
+        function renderMethodChart() {
+            const ctx = document.getElementById('methodChart').getContext('2d');
+            if (methodChartInstance) methodChartInstance.destroy();
+
+            const methodMap = {
+                'hdfc_card_spend': 0,
+                'icici_card_spend': 0,
+                'kotak_upi_transfer': 0,
+                'hdfc_upi_transfer': 0,
+                'hdfc_ac_autodebit': 0,
+                'hdfc_card_refund': 0
+            };
+
+            filteredTransactions.forEach(t => {
+                if (methodMap.hasOwnProperty(t.transaction)) {
+                    methodMap[t.transaction] += t.amount;
+                } else {
+                    methodMap[t.transaction] = (methodMap[t.transaction] || 0) + t.amount;
+                }
+            });
+
+            const rawKeys = Object.keys(methodMap);
+            const labels = rawKeys.map(k => formatMethodLabel(k));
+            const data = rawKeys.map(k => methodMap[k]);
+
+            methodChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Volume Total (₹)',
+                        data: data,
+                        backgroundColor: [
+                            '#6366f1', '#8b5cf6', '#06b6d4',
+                            '#0ea5e9', '#f59e0b', '#10b981'
+                        ],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ` Amount: ${formatCurrency(context.raw)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: {
+                                color: '#94a3b8',
+                                font: { size: 10 },
+                                callback: function(val) { return '₹' + val.toLocaleString('en-IN'); }
+                            }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { color: '#cbd5e1', font: { size: 11 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render Top Merchants List
+        function renderTopMerchantsList() {
+            const container = document.getElementById('topMerchantsContainer');
+            const merchantMap = {};
+
+            filteredTransactions.forEach(t => {
+                if (t.type === 'debit') {
+                    merchantMap[t.store] = (merchantMap[t.store] || 0) + t.amount;
+                }
+            });
+
+            const sortedMerchants = Object.entries(merchantMap)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+
+            if (sortedMerchants.length === 0) {
+                container.innerHTML = '<div class="text-xs text-slate-500 text-center py-8">No debit transactions recorded</div>';
+                return;
+            }
+
+            const maxSpend = sortedMerchants[0][1] || 1;
+
+            container.innerHTML = sortedMerchants.map(([name, val], index) => {
+                const percentage = Math.min(100, Math.round((val / maxSpend) * 100));
+                return `
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="font-medium text-slate-200 truncate max-w-[150px]">
+                                <span class="text-slate-500 font-mono mr-1.5">#${index + 1}</span>${escapeHTML(name)}
+                            </span>
+                            <span class="font-semibold text-slate-100">${formatCurrency(val)}</span>
+                        </div>
+                        <div class="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
+                            <div class="bg-gradient-to-r from-amber-500 to-orange-500 h-full rounded-full transition-all duration-500" style="width: ${percentage}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Filter Table by Search Query, Category, and Method
+        function filterTable() {
+            const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+            const catFilter = document.getElementById('categoryFilter').value;
+            const methodFilter = document.getElementById('methodFilter').value;
+
+            let records = filteredTransactions.filter(t => {
+                const matchesSearch = !searchQuery ||
+                    t.store.toLowerCase().includes(searchQuery) ||
+                    t.category.toLowerCase().includes(searchQuery) ||
+                    t.transaction.toLowerCase().includes(searchQuery);
+
+                const matchesCat = catFilter === 'ALL' || t.category === catFilter;
+                const matchesMethod = methodFilter === 'ALL' || t.transaction === methodFilter;
+
+                return matchesSearch && matchesCat && matchesMethod;
+            });
+
+            renderTableRecords(records);
+        }
+
+        // Render Table Records with Pagination
+        function renderTableRecords(records) {
+            const tbody = document.getElementById('transactionTableBody');
+            const showingCount = document.getElementById('showingRecordsCount');
+            const totalRecords = records.length;
+
+            const totalPages = Math.max(1, Math.ceil(totalRecords / rowsPerPage));
+            if (currentPage > totalPages) currentPage = totalPages;
+
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const pageData = records.slice(startIndex, startIndex + rowsPerPage);
+
+            showingCount.innerText = `Showing ${pageData.length} of ${totalRecords} transactions`;
+            document.getElementById('pageIndicator').innerText = `Page ${currentPage} of ${totalPages}`;
+
+            document.getElementById('prevPageBtn').disabled = currentPage === 1;
+            document.getElementById('nextPageBtn').disabled = currentPage === totalPages;
+
+            if (pageData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center py-8 text-slate-500">
+                            <i class="fa-solid fa-folder-open text-2xl mb-2 block"></i>
+                            No transaction records matched the current criteria.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = pageData.map(t => {
+                const formattedDate = formatDateStr(t.dateObj);
+                const methodBadge = getMethodBadgeHTML(t.transaction);
+                const categoryBadge = `<span class="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-slate-800 text-slate-300 border border-slate-700">${escapeHTML(t.category)}</span>`;
+
+                const isDebit = t.type === 'debit';
+                const typeBadge = isDebit
+                    ? `<span class="text-rose-400 font-medium flex items-center gap-1"><i class="fa-solid fa-arrow-down text-[10px]"></i> Debit</span>`
+                    : `<span class="text-emerald-400 font-medium flex items-center gap-1"><i class="fa-solid fa-arrow-up text-[10px]"></i> Credit</span>`;
+
+                const amountDisplay = isDebit
+                    ? `<span class="font-semibold text-rose-400">- ${formatCurrency(t.amount)}</span>`
+                    : `<span class="font-semibold text-emerald-400">+ ${formatCurrency(t.amount)}</span>`;
+
+                return `
+                    <tr class="hover:bg-slate-850/60 transition">
+                        <td class="py-3 px-4 font-mono text-slate-400 text-[11px]">${formattedDate}</td>
+                        <td class="py-3 px-4 font-medium text-slate-100">${escapeHTML(t.store)}</td>
+                        <td class="py-3 px-4">${methodBadge}</td>
+                        <td class="py-3 px-4">${categoryBadge}</td>
+                        <td class="py-3 px-4">${typeBadge}</td>
+                        <td class="py-3 px-4 text-right">${amountDisplay}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Table Pagination Handler
+        function changePage(delta) {
+            currentPage += delta;
+            filterTable();
+        }
+
+        // Utility: Format currency in INR
+        function formatCurrency(val) {
+            return new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                maximumFractionDigits: 2
+            }).format(val || 0);
+        }
+
+        // Utility: Human readable channel badges
+        function getMethodBadgeHTML(method) {
+            const badges = {
+                'hdfc_card_spend': '<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/30"><i class="fa-solid fa-credit-card mr-1 text-[10px]"></i>HDFC Card</span>',
+                'icici_card_spend': '<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-purple-500/10 text-purple-300 border border-purple-500/30"><i class="fa-solid fa-credit-card mr-1 text-[10px]"></i>ICICI Card</span>',
+                'kotak_upi_transfer': '<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-cyan-500/10 text-cyan-300 border border-cyan-500/30"><i class="fa-solid fa-mobile-screen mr-1 text-[10px]"></i>Kotak UPI</span>',
+                'hdfc_upi_transfer': '<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-sky-500/10 text-sky-300 border border-sky-500/30"><i class="fa-solid fa-mobile-screen mr-1 text-[10px]"></i>HDFC UPI</span>',
+                'hdfc_ac_autodebit': '<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30"><i class="fa-solid fa-rotate-right mr-1 text-[10px]"></i>Auto Debit</span>',
+                'hdfc_card_refund': '<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"><i class="fa-solid fa-shield-halved mr-1 text-[10px]"></i>Card Refund</span>'
+            };
+            return badges[method] || `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300">${formatMethodLabel(method)}</span>`;
+        }
+
+        function formatMethodLabel(m) {
+            const map = {
+                'hdfc_card_spend': 'HDFC Card Spend',
+                'icici_card_spend': 'ICICI Card Spend',
+                'kotak_upi_transfer': 'Kotak UPI Transfer',
+                'hdfc_upi_transfer': 'HDFC UPI Transfer',
+                'hdfc_ac_autodebit': 'HDFC Auto Debit',
+                'hdfc_card_refund': 'HDFC Card Refund'
+            };
+            return map[m] || m;
+        }
+
+        // Date Helpers
+        function getMonthName(mIdx) {
+            const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            return months[mIdx] || '';
+        }
+
+        function getMonthAbbr(mIdx) {
+            const abbrs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return abbrs[mIdx] || '';
+        }
+
+        function formatDateStr(d) {
+            if (!(d instanceof Date) || isNaN(d)) return 'N/A';
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const hours = String(d.getHours()).padStart(2, '0');
+            const mins = String(d.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${mins}`;
+        }
+
+        function escapeHTML(str) {
+            return String(str || '').replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+            });
+        }
+
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+
+            const bgClass = type === 'success' ? 'bg-emerald-950/90 border-emerald-600 text-emerald-200' :
+                            type === 'error' ? 'bg-rose-950/90 border-rose-600 text-rose-200' :
+                            'bg-slate-900/90 border-blue-500 text-slate-200';
+
+            const iconClass = type === 'success' ? 'fa-circle-check text-emerald-400' :
+                             type === 'error' ? 'fa-triangle-exclamation text-rose-400' :
+                             'fa-circle-info text-blue-400';
+
+            toast.className = `px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-medium flex items-center space-x-2 transition-all duration-300 transform translate-x-full pointer-events-auto ${bgClass}`;
+            toast.innerHTML = `<i class="fa-solid ${iconClass}"></i> <span>${escapeHTML(message)}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => { toast.classList.remove('translate-x-full'); }, 10);
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => { toast.remove(); }, 300);
+            }, 3500);
+        }
+    </script>
+</body>
+</html>

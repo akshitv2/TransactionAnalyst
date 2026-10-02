@@ -3,6 +3,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from typing import Optional
 import pandas as pd
 
 
@@ -47,8 +48,14 @@ def classify_store(
     return default_category
 
 
-def parse_xml_to_df(file_path: str, year: int, month: int) -> pd.DataFrame:
-    """Parses XML and returns all SMS records for the target year and month."""
+def parse_xml_to_df(
+    file_path: str, year: Optional[int] = None, month: Optional[int] = None
+) -> pd.DataFrame:
+    """Parses XML and returns SMS records.
+
+    If year and month are provided, filters by date; otherwise reads ALL
+    records.
+    """
     tree = ET.parse(file_path)
     root = tree.getroot()
 
@@ -57,15 +64,19 @@ def parse_xml_to_df(file_path: str, year: int, month: int) -> pd.DataFrame:
         timestamp_ms = int(sms.attrib.get("date", 0))
         sms_datetime = datetime.fromtimestamp(timestamp_ms / 1000.0)
 
-        if sms_datetime.year == year and sms_datetime.month == month:
-            sms_data.append({
-                "address": sms.attrib.get("address"),
-                "date": sms_datetime,
-                "body": sms.attrib.get("body"),
-                "type": sms.attrib.get("type"),
-                "readable_date": sms.attrib.get("readable_date"),
-                "contact_name": sms.attrib.get("contact_name"),
-            })
+        # Apply date filtering only if both year and month are specified
+        if year is not None and month is not None:
+            if sms_datetime.year != year or sms_datetime.month != month:
+                continue
+
+        sms_data.append({
+            "address": sms.attrib.get("address"),
+            "date": sms_datetime,
+            "body": sms.attrib.get("body"),
+            "type": sms.attrib.get("type"),
+            "readable_date": sms.attrib.get("readable_date"),
+            "contact_name": sms.attrib.get("contact_name"),
+        })
 
     return pd.DataFrame(sms_data)
 
@@ -127,8 +138,8 @@ def process_sms_backup(
     xml_file_path: str,
     templates_json_path: str,
     store_map_json_path: str,
-    year: int,
-    month: int,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
     save_unfiltered: bool = True,
     unfiltered_csv_path: str = "unfiltered_sms.csv",
     extracted_csv_path: str = "extracted_data.csv",
@@ -139,14 +150,16 @@ def process_sms_backup(
     templates = load_templates_from_json(templates_json_path)
     store_map = load_store_map(store_map_json_path)
 
-    # 2. Fetch SMS filtered by month and year
-    filtered_df = parse_xml_to_df(xml_file_path, year, month)
+    # 2. Fetch SMS (either filtered by year/month or all SMS if year/month are None)
+    filtered_df = parse_xml_to_df(xml_file_path, year=year, month=month)
 
-    # 3. Save ALL unfiltered rows for selected month (if enabled)
+    filter_desc = f"{month}/{year}" if year and month else "ALL dates"
+
+    # 3. Save ALL unfiltered rows fetched (if enabled)
     if save_unfiltered:
         filtered_df.to_csv(unfiltered_csv_path, index=False)
         print(
-            f"Saved {len(filtered_df)} unfiltered records for {month}/{year} to '{unfiltered_csv_path}'"
+            f"Saved {len(filtered_df)} raw records ({filter_desc}) to '{unfiltered_csv_path}'"
         )
 
     # 4. Process static templates and categorize stores
@@ -168,14 +181,15 @@ def process_sms_backup(
 
 # --- Execution Example ---
 if __name__ == "__main__":
+    # Example 1: Run for all dates (Non-filtering mode)
     process_sms_backup(
         xml_file_path="data/sms-20261002204925.xml",
         templates_json_path="config/templates.json",
         store_map_json_path="config/store_map.json",
-        year=2026,
-        month=9,
+        year=None,  # Set to None to process all messages
+        month=None, # Set to None to process all messages
         save_unfiltered=False,
-        unfiltered_csv_path="output/unfiltered_month_sms.csv",
+        unfiltered_csv_path="output/unfiltered_all_sms.csv",
         extracted_csv_path="output/extracted_transactions.csv",
         unresolved_csv_path="output/unresolved_for_llm.csv",
     )

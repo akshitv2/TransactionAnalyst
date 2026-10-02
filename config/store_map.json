@@ -1,5 +1,4 @@
 {
-  "Indian Clearing Corporation": "INVEST",
   "MYNTRA": "CLOTHING",
   "UNIQLO": "CLOTHING",
   "LEVIS": "CLOTHING",
@@ -9,7 +8,6 @@
   "ISS GLOBAL": "FOOD ORDER",
   "EATCLUB": "FOOD ORDER",
   "ISS FACILITY SERVICES": "FOOD ORDER",
-  "GROWW": "INVEST",
   "AMAZON": "SHOPPING",
   "OFFICE WORK": "SHOPPING",
   "AMAZON PAY": "SHOPPING",
@@ -34,5 +32,8 @@
   "GPAY UTILITIES": "BILLS",
   "BISLERI": "BILLS",
   "HEALTHMART": "MEDICAL",
-  "CRED": "NA"
+  "CRED": "NA",
+  "Indian Clearing Corporation": "NA",
+  "GROWW": "NA",
+  "AKSHIT BISHT": "NA"
 }
