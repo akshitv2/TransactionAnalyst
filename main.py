@@ -15,6 +15,7 @@ def load_templates_from_json(json_file_path: str) -> list[dict]:
     for tmpl in templates_raw:
         compiled_templates.append({
             "name": tmpl["name"],
+            "type": tmpl["type"],
             "example": tmpl.get("example", ""),
             "pattern": re.compile(tmpl["pattern"], re.IGNORECASE),
         })
@@ -65,7 +66,8 @@ class SMSTemplateParser:
                     extracted_fields = match.groupdict()
                     record = {
                         "date": row["date"],
-                        "template_name": tmpl["name"],
+                        "transaction": tmpl["name"],
+                        "type": tmpl["type"],
                         "amount": extracted_fields.get("amount"),
                         "store_name": extracted_fields.get(
                             "store_name"
@@ -80,7 +82,7 @@ class SMSTemplateParser:
 
         extracted_df = pd.DataFrame(
             resolved_records,
-            columns=["date", "template_name", "amount", "store_name"],
+            columns=["date", "transaction","type", "amount", "store_name"],
         )
         remaining_df = df.loc[unresolved_indices].reset_index(drop=True)
 
