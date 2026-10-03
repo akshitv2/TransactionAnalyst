@@ -1,2 +1,4 @@
-/data/
-/output/
+/prototype/data/
+/prototype/output/
+/build/
+/app/build/
